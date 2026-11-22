@@ -26,12 +26,13 @@ function AssemblyPattern(element_dofs, ndofs, free)
     rows, cols = Int[], Int[]
     for dofs in element_dofs, j in 1:M, i in 1:M
         ri, cj = free_index[dofs[i]], free_index[dofs[j]]
-        if ri > 0 && cj > 0
+        if ri > 0 && cj > 0 # each fix dof takes out one col and row
             push!(rows, ri); push!(cols, cj)
         end
     end
     K = sparse(rows, cols, ones(length(rows)), nf, nf)
-
+    # Get id of values of CSC acording to each element
+    # so get a row of vec(Ke) 64 for each element
     slot = zeros(Int, M*M, length(element_dofs))
     for (e, dofs) in enumerate(element_dofs), j in 1:M, i in 1:M
         ri, cj = free_index[dofs[i]], free_index[dofs[j]]
@@ -44,6 +45,7 @@ function AssemblyPattern(element_dofs, ndofs, free)
 end
 
 function assemble!(pat::AssemblyPattern, Kₑ::StaticMatrix, scale::AbstractVector)
+    # with slot just uptadate the nzval no need to re-asembly
     nz = pat.K.nzval
     fill!(nz, 0.0)
     for e in axes(pat.slot, 2)
@@ -62,7 +64,6 @@ struct HelmholtzFilter
 end
 
 function HelmholtzFilter(mesh, rmin)
-    # rmin is the physical filter radius divided by the element size.
     R = rmin/2/sqrt(3)
     # Q4 element matrices for unit element: Laplacian (K_lap/6) and mass (M/36)
     K1 = [ 4 -1 -2 -1;
@@ -90,7 +91,7 @@ function HelmholtzFilter(mesh, rmin)
     end
     KF=sparse(rows, cols, vals, length(mesh.nodes), length(mesh.nodes))
     KF_chol = cholesky(Symmetric(KF))
-    # Tₑₙ ∈ ℝ^{ne×nn}: each element row has four entries 0.25
+    # Tₑₙ ∈ ℝ^{ne×nn}: each element row has four entries so 0.25
     coo_length = length(mesh.elements)*4
     vals = 0.25*ones(coo_length)
     rows = Vector{Int}(undef,coo_length)
@@ -142,7 +143,8 @@ function impose_passive!(ρ, prob; full_value=1.0)
     return ρ
 end
 
-# Prescribed input densities also participate in the filter.
+# maintainf fixed values -> filter ->
+# project -> keep fixed values
 function physical_density(prob, ρ, β)
     ρ̃ = prob.H(impose_passive!(copy(ρ), prob))
     ρ̄ = impose_passive!(project_density(ρ̃, β), prob)
