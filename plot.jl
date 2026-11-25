@@ -155,3 +155,74 @@ function plot_results(outdir, result, mesh, nx, ny, p, β, Vₜ, d_max; complian
     save(joinpath(outdir, "malha.pdf"), plot_mesh(mesh, nx, ny); pt_per_unit=1)
     return topology_pdf
 end
+
+function plot_path_2links(path=path_2links())
+    (; l, targets, y_floor, q₁_deg, q₂_deg, θ₁_deg, θ₂_deg, residuals, residual_tol) = path
+    poses = eachindex(targets)
+    failed = .!(residuals .<= residual_tol)
+    target_color, arm_color, failure_color = "#848B98", "#267383", "#B75531"
+
+    fig = article_figure(PAGE_WIDTH, 225; padding=8)
+    ax_path = history_axis(fig[1, 1]; xlabel="x (m)", ylabel="y (m)")
+    ax_path.title = "(a) Configurações do braço"
+    ax_path.titlesize = 8
+    ax_path.aspect = DataAspect()
+    ax_path.xtickformat = decimal_ticks
+    ax_angles = history_axis(fig[1, 2]; xlabel="Configuração", ylabel="Ângulo (°)")
+    ax_angles.title = "(b) Ângulos por configuração"
+    ax_angles.titlesize = 8
+    ax_angles.xticks = poses
+    ax_angles.yticks = -200:100:200
+    ylims!(ax_angles, -210, 210)
+
+    hlines!(ax_path, [y_floor]; color=(:gray, 0.4), linewidth=0.8)
+    lines!(ax_path, first.(targets), last.(targets);
+           color=target_color, linestyle=:dash, linewidth=1.3)
+    scatter!(ax_path, first.(targets), last.(targets); color=target_color, markersize=4.5)
+    for i in poses
+        q₁ = q₁_deg[i]
+        ϕ = q₁ + q₂_deg[i]
+        x_elbow, y_elbow = l * cosd(q₁), l * sind(q₁)
+        x_tip, y_tip = x_elbow + l * cosd(ϕ), y_elbow + l * sind(ϕ)
+        color = failed[i] ? failure_color : arm_color
+        lines!(ax_path, [0, x_elbow, x_tip], [0, y_elbow, y_tip]; color=(color, 0.7), linewidth=1.2)
+        scatter!(ax_path, [x_elbow, x_tip], [y_elbow, y_tip]; color, markersize=[3.75, 6])
+        if failed[i]
+            x_target, y_target = targets[i]
+            lines!(ax_path, [x_tip, x_target], [y_tip, y_target];
+                   color, linestyle=:dot, linewidth=1.1)
+            vspan!(ax_angles, i - 0.4, i + 0.4; color=(color, 0.11))
+        end
+    end
+    scatter!(ax_path, [0.0], [0.0]; color=:slategray, markersize=7.5)
+
+    entries = [LineElement(color=target_color, linestyle=:dash), LineElement(color=arm_color)]
+    labels = ["Trajetória-alvo", "Configuração convergida"]
+    if any(failed)
+        push!(entries, LineElement(color=failure_color))
+        push!(labels, "Fora da tolerância")
+    end
+    article_legend(fig[2, 1], entries, labels; nbanks=2)
+
+    for (values, color, linestyle, marker, label) in (
+        (q₁_deg, arm_color, :solid, :circle, "q₁"),
+        (q₂_deg, "#62539A", :solid, :rect, "q₂"),
+        (θ₁_deg, "#0072B2", :dash, :utriangle, "θ₁"),
+        (θ₂_deg, "#A45628", :dash, :diamond, "θ₂"),
+    )
+        scatterlines!(ax_angles, poses, values; color, linestyle, marker, label,
+                      markersize=6, linewidth=1.2)
+    end
+    article_legend(fig[2, 2], ax_angles; nbanks=4)
+    rowgap!(fig.layout, 5)
+    return fig
+end
+
+function save_path_2links(path=path_2links(); outdir=joinpath(@__DIR__, "output"))
+    fig = plot_path_2links(path)
+    pdfdir = mkpath(joinpath(outdir, "pdf"))
+    pdf = joinpath(pdfdir, "trajetoria_2r.pdf")
+    save(pdf, fig; pt_per_unit=1)
+    save(joinpath(outdir, "trayectoria_2r.png"), fig; px_per_unit=3)
+    return pdf
+end

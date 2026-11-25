@@ -1,3 +1,4 @@
-/topopt.jld2
-/topopt.pdf
-/output/pdf/*.pdf
+*.jld2
+output/
+papers/
+revision/
